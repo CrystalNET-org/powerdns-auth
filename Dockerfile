@@ -3,7 +3,7 @@ LABEL author="Lukas Wingerberg"
 LABEL author_email="h@xx0r.eu"
 
 # renovate: datasource=github-tags depName=PowerDNS/pdns extractVersion=^auth-(?<version>.*)$ versioning=semver
-ENV POWERDNS_VERSION=4.7.3
+ENV POWERDNS_VERSION=4.8.4
 
 ENV MYSQL_DEFAULT_AUTOCONF=true \
     MYSQL_DEFAULT_HOST="mysql" \
