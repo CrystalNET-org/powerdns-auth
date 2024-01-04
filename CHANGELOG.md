@@ -4,10 +4,11 @@
 
 ### ❤️ Thanks to all contributors! ❤️
 
-@psych0d0g, @Psych0D0g
+@Psych0D0g, @psych0d0g
 
 ### Misc
 
+- optimize size and performance ([21c4682](https://github.com/CrystalNET-org/powerdns-auth/commit/21c4682396ce2b2cbf8c11da56e0857a8621126f))
 - Update dependency PowerDNS/pdns to v4.8.4 [[#2](https://github.com/CrystalNET-org/powerdns-auth/pull/2)]
 - Update harbor.crystalnet.org/dockerhub-proxy/renovate/renovate Docker tag to v37.121.0 [[#3](https://github.com/CrystalNET-org/powerdns-auth/pull/3)]
 - fix rennovate ([500fb6d](https://github.com/CrystalNET-org/powerdns-auth/commit/500fb6db9842cc0c7ce89fef1454b4605244f209))
