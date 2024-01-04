@@ -5,26 +5,6 @@ log() {
     echo "$(date +"%Y-%m-%d %H:%M:%S") - $1"
 }
 
-# Compile a list of environment variables prefixed with "PDNS_"
-compile_pdns_variables() {
-    local pdns_vars=()
-    while IFS='=' read -r name _; do
-        if [[ $name == PDNS_* ]]; then
-            pdns_vars+=("$name")
-        fi
-    done < <(env)
-    echo "${pdns_vars[@]}"
-}
-
-# Convert an environment variable name to a command-line parameter
-env_var_to_cmd_arg() {
-    local var_name="$1"
-    local cmd_arg
-
-    cmd_arg="--$(echo "${var_name#PDNS_}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')"
-    echo "$cmd_arg"
-}
-
 # Check if required environment variables are defined
 check_required_vars() {
     local required_vars=("$@")
@@ -111,25 +91,19 @@ sync_mysql_schema() {
     rm -f "$temp_diff_file"
 }
 
-# Assemble PowerDNS arguments dynamically
-assemble_pdns_arguments() {
-    local cmd_arg
-    local pdns_vars
-    local arguments=()
+cmd_args=()
 
-    pdns_vars=("$(compile_pdns_variables)")
-    for var in "${pdns_vars[@]}"; do
-        cmd_arg=$(env_var_to_cmd_arg "$var")
-        arguments+=( "$cmd_arg=${!var}" )
-    done
-
-    echo "${arguments[@]}"
-}
+# Read all PDNS_ prefixed environment variables and convert them to command line parameters
+while IFS='=' read -r name value; do
+    if [[ $name == PDNS_* ]]; then
+        cmd_args+=( "--$(tr '[:upper:]_' '[:lower:]-' <<< "${name#PDNS_}")=$value" )
+    fi
+done < <(env)
 
 # setup traps for PowerDNS server
-trap "pdns_control quit" SIGHUP SIGINT SIGTERM
+trap "/opt/pdns/bin/pdns_control --no-config quit" SIGHUP SIGINT SIGTERM
 
 # Start PowerDNS with dynamically assembled command-line arguments
-/usr/sbin/pdns_server "$(assemble_pdns_arguments)" "$@"
+/opt/pdns/sbin/pdns_server "${cmd_args[@]}" "$@"
 
 wait
