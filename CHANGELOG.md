@@ -8,6 +8,7 @@
 
 ### Misc
 
+- correct image name for push ([3789d61](https://github.com/CrystalNET-org/powerdns-auth/commit/3789d616a8f7cc43421a4e54e63d493d6c6f84c9))
 - optimize size and performance ([21c4682](https://github.com/CrystalNET-org/powerdns-auth/commit/21c4682396ce2b2cbf8c11da56e0857a8621126f))
 - Update dependency PowerDNS/pdns to v4.8.4 [[#2](https://github.com/CrystalNET-org/powerdns-auth/pull/2)]
 - Update harbor.crystalnet.org/dockerhub-proxy/renovate/renovate Docker tag to v37.121.0 [[#3](https://github.com/CrystalNET-org/powerdns-auth/pull/3)]
