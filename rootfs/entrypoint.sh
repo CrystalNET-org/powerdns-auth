@@ -1,108 +1,135 @@
 #!/bin/bash
 set -e
 
-# usage: file_env VAR [DEFAULT]
-#    ie: file_env 'XYZ_DB_PASSWORD' 'example'
-# (will allow for "$XYZ_DB_PASSWORD_FILE" to fill in the value of
-#  "$XYZ_DB_PASSWORD" from a file, especially for Docker's secrets feature)
-# source: https://github.com/docker-library/mariadb/blob/master/docker-entrypoint.sh
-file_env() {
-    local var="$1"
-    local fileVar="${var}_FILE"
-    local def="${2:-}"
-    if [ "${!var:-}" ] && [ "${!fileVar:-}" ]; then
-        echo "Both $var and $fileVar are set (but are exclusive)"
+log() {
+    echo "$(date +"%Y-%m-%d %H:%M:%S") - $1"
+}
+
+# Compile a list of environment variables prefixed with "PDNS_"
+compile_pdns_variables() {
+    local pdns_vars=()
+    while IFS='=' read -r name _; do
+        if [[ $name == PDNS_* ]]; then
+            pdns_vars+=("$name")
+        fi
+    done < <(env)
+    echo "${pdns_vars[@]}"
+}
+
+# Convert an environment variable name to a command-line parameter
+env_var_to_cmd_arg() {
+    local var_name="$1"
+    local cmd_arg
+
+    cmd_arg="--$(echo "${var_name#PDNS_}" | tr '[:upper:]' '[:lower:]' | sed 's/_/-/g')"
+    echo "$cmd_arg"
+}
+
+# Check if required environment variables are defined
+check_required_vars() {
+    local required_vars=("$@")
+    for var in "${required_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            log "Error: $var is not defined. Please set the required environment variables."
+            exit 1
+        fi
+    done
+}
+
+# WiP
+check_mysql_availability() {
+    local max_attempts=30
+    local attempt=0
+
+    # Verify MySQL-related environment variables
+    local mysql_vars=(
+        "PDNS_GMYSQL_HOST"
+        "PDNS_GMYSQL_PORT"
+        "PDNS_GMYSQL_USER"
+        "PDNS_GMYSQL_PASSWORD"
+        "PDNS_GMYSQL_DBNAME"
+    )
+
+    check_required_vars "${mysql_vars[@]}"
+
+    log "Checking MySQL server availability..."
+
+    while [ "$attempt" -lt "$max_attempts" ]; do
+        if mysqladmin ping -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" &>/dev/null; then
+            log "MySQL server is available."
+            return
+        else
+            log "MySQL server is not yet available. Retrying in 5 seconds... (Attempt: $((attempt + 1)))"
+            sleep 5
+            ((attempt++))
+        fi
+    done
+
+    log "Error: Unable to connect to MySQL server after $max_attempts attempts. Exiting."
+    exit 1
+}
+
+# WiP
+sync_mysql_schema() {
+    local schema_file="/etc/pdns/mysql_schema.sql"
+    local temp_diff_file="/tmp/schema_diff.sql"
+
+    # Verify MySQL-related environment variables
+    local mysql_vars=(
+        "PDNS_GMYSQL_HOST"
+        "PDNS_GMYSQL_PORT"
+        "PDNS_GMYSQL_USER"
+        "PDNS_GMYSQL_PASSWORD"
+        "PDNS_GMYSQL_DBNAME"
+    )
+
+    check_required_vars "${mysql_vars[@]}"
+
+    if [ ! -e "$schema_file" ]; then
+        log "Error: MySQL schema file $schema_file not found."
         exit 1
     fi
-    local val="$def"
-    if [ "${!var:-}" ]; then
-        val="${!var}"
-    elif [ "${!fileVar:-}" ]; then
-        val="$(< "${!fileVar}")"
+
+    log "Comparing MySQL schema with local schema.sql file..."
+
+    mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"
+
+    if [ $? -eq 0 ]; then
+        log "MySQL schema is already in sync with the local schema.sql file."
+    else
+        log "Detected differences in MySQL schema. Synchronizing using pt-table-sync..."
+
+        # Extract table names from schema.sql
+        tables=("$(grep -oP "(?<=CREATE TABLE \`)[^\`]+" "$schema_file")")
+
+        # Synchronize each table
+        for table in "${tables[@]}"; do
+            pt-table-sync --execute --verbose h="$PDNS_GMYSQL_HOST",P="$PDNS_GMYSQL_PORT",u="$PDNS_GMYSQL_USER",p="$PDNS_GMYSQL_PASSWORD" "$PDNS_GMYSQL_DBNAME"."$table" "$schema_file"
+        done
     fi
-    export "$var"="$val"
-    unset "$fileVar"
+
+    rm -f "$temp_diff_file"
 }
 
-# Loads various settings that are used elsewhere in the script
-docker_setup_env() {
-    # Initialize values that might be stored in a file
+# Assemble PowerDNS arguments dynamically
+assemble_pdns_arguments() {
+    local cmd_arg
+    local pdns_vars
+    local arguments=()
 
-    file_env 'MYSQL_AUTOCONF' $MYSQL_DEFAULT_AUTOCONF
-    file_env 'MYSQL_HOST' $MYSQL_DEFAULT_HOST
-    file_env 'MYSQL_DNSSEC' 'no'
-    file_env 'MYSQL_DB' $MYSQL_DEFAULT_DB
-    file_env 'MYSQL_PASS' $MYSQL_DEFAULT_PASS
-    file_env 'MYSQL_USER' $MYSQL_DEFAULT_USER
-    file_env 'MYSQL_PORT' $MYSQL_DEFAULT_PORT
+    pdns_vars=("$(compile_pdns_variables)")
+    for var in "${pdns_vars[@]}"; do
+        cmd_arg=$(env_var_to_cmd_arg "$var")
+        arguments+=( "$cmd_arg=${!var}" )
+    done
+
+    echo "${arguments[@]}"
 }
 
-docker_setup_env
-
-# --help, --version
-[ "$1" = "--help" ] || [ "$1" = "--version" ] && exec pdns_server $1
-# treat everything except -- as exec cmd
-[ "${1:0:2}" != "--" ] && exec "$@"
-
-if $MYSQL_AUTOCONF ; then
-  # Set MySQL Credentials in pdns.conf
-  sed -r -i "s/^[# ]*gmysql-host=.*/gmysql-host=${MYSQL_HOST}/g" /etc/pdns/pdns.conf
-  sed -r -i "s/^[# ]*gmysql-port=.*/gmysql-port=${MYSQL_PORT}/g" /etc/pdns/pdns.conf
-  sed -r -i "s/^[# ]*gmysql-user=.*/gmysql-user=${MYSQL_USER}/g" /etc/pdns/pdns.conf
-  sed -r -i "s/^[# ]*gmysql-password=.*/gmysql-password=${MYSQL_PASS}/g" /etc/pdns/pdns.conf
-  sed -r -i "s/^[# ]*gmysql-dbname=.*/gmysql-dbname=${MYSQL_DB}/g" /etc/pdns/pdns.conf
-  sed -r -i "s/^[# ]*gmysql-dnssec=.*/gmysql-dnssec=${MYSQL_DNSSEC}/g" /etc/pdns/pdns.conf
-
-  MYSQLCMD="mysql --host=${MYSQL_HOST} --user=${MYSQL_USER} --password=${MYSQL_PASS} --port=${MYSQL_PORT} -r -N"
-
-  # wait for Database come ready
-  isDBup () {
-    echo "SHOW STATUS" | $MYSQLCMD 1>/dev/null
-    echo $?
-  }
-
-  RETRY=10
-  until [ `isDBup` -eq 0 ] || [ $RETRY -le 0 ] ; do
-    echo "Waiting for database to come up"
-    sleep 5
-    RETRY=$(expr $RETRY - 1)
-  done
-  if [ $RETRY -le 0 ]; then
-    >&2 echo Error: Could not connect to Database on $MYSQL_HOST:$MYSQL_PORT
-    exit 1
-  fi
-
-  # init database if necessary
-  echo "CREATE DATABASE IF NOT EXISTS $MYSQL_DB;" | $MYSQLCMD
-  MYSQLCMD="$MYSQLCMD $MYSQL_DB"
-
-  if [ "$(echo "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \"$MYSQL_DB\";" | $MYSQLCMD)" -le 1 ]; then
-    echo Initializing Database
-    cat /etc/pdns/schema.sql | $MYSQLCMD
-
-    # Run custom mysql post-init sql scripts
-    if [ -d "/etc/pdns/mysql-postinit" ]; then
-      for SQLFILE in $(ls -1 /etc/pdns/mysql-postinit/*.sql | sort) ; do
-        echo Source $SQLFILE
-        cat $SQLFILE | $MYSQLCMD
-      done
-    fi
-  fi
-
-  unset -v MYSQL_PASS
-fi
-
-if [[ ! -z "${POWERDNS_LOGLEVEL}" ]]; then
-  sed -r -i "s/^[# ]*loglevel=.*/loglevel=${POWERDNS_LOGLEVEL}/g" /etc/pdns/pdns.conf
-fi
-
-if [[ ! -z "${POWERDNS_ALLOW_AXFR_IPS}" ]]; then
-  sed -r -i "s/^[# ]*allow-axfr-ips=.*/allow-axfr-ips=${POWERDNS_ALLOW_AXFR_IPS}/g" /etc/pdns/pdns.conf
-fi
-
-# Run pdns server
+# setup traps for PowerDNS server
 trap "pdns_control quit" SIGHUP SIGINT SIGTERM
 
-pdns_server "$@" &
+# Start PowerDNS with dynamically assembled command-line arguments
+/usr/sbin/pdns_server "$(assemble_pdns_arguments)" "$@"
 
 wait

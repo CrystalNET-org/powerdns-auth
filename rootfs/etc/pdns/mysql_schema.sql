@@ -1,3 +1,5 @@
+/* This is the 4.7 schema with added constraints for innodb */
+
 CREATE TABLE domains (
   id                    INT AUTO_INCREMENT,
   name                  VARCHAR(255) NOT NULL,
