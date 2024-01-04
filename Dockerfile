@@ -4,6 +4,7 @@ LABEL author_email="h@xx0r.eu"
 
 # renovate: datasource=github-tags depName=PowerDNS/pdns extractVersion=^auth-(?<version>.*)$ versioning=semver
 ENV POWERDNS_VERSION=4.7.3
+
 ENV MYSQL_DEFAULT_AUTOCONF=true \
     MYSQL_DEFAULT_HOST="mysql" \
     MYSQL_DEFAULT_PORT="3306" \
