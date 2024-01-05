@@ -51,6 +51,7 @@ Run PowerDNS with a specific MySQL configuration:
 
 ```bash
 docker run -d -p 53:10353/tcp -p 53:10353/udp \
+  -e PDNS_LAUNCH=gmysql \
   -e PDNS_GMYSQL_HOST=my-mysql-server \
   -e PDNS_GMYSQL_PORT=3307 \
   -e PDNS_GMYSQL_USER=myuser \
