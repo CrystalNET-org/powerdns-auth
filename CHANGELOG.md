@@ -8,6 +8,8 @@
 
 ### Misc
 
+- update readmne ([13e167d](https://github.com/CrystalNET-org/powerdns-auth/commit/13e167df949b2ca1a5ee1bc6c089b5fc5a3aa68c))
+- update readmne ([dbe05de](https://github.com/CrystalNET-org/powerdns-auth/commit/dbe05de5486c52de20da6dfc1011e74d0c3f0fcf))
 - update readmne ([e38ae9c](https://github.com/CrystalNET-org/powerdns-auth/commit/e38ae9c4c422322c57d4b87be290dc636a708dc6))
 - update readmne ([dbd5b6a](https://github.com/CrystalNET-org/powerdns-auth/commit/dbd5b6a3c42d65bbe0aee23b9bae8381112f6ed9))
 - use short notation like upstream ([99f15f6](https://github.com/CrystalNET-org/powerdns-auth/commit/99f15f619fdb9f2340e4c96c120aaa2757777979))
