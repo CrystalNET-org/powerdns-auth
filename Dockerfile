@@ -63,6 +63,6 @@ RUN addgroup -S pdns 2>/dev/null && \
 COPY --from=builder /opt /opt
 ADD rootfs/ /
 
-EXPOSE 53/tcp 53/udp
+EXPOSE 10353/tcp 10353/udp
 
 ENTRYPOINT ["/entrypoint.sh"]
