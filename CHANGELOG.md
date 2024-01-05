@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.0.1](https://github.com/CrystalNET-org/powerdns-auth/releases/tag/0.0.1) - 2024-01-04
+## [0.0.1](https://github.com/CrystalNET-org/powerdns-auth/releases/tag/0.0.1) - 2024-01-05
 
 ### ❤️ Thanks to all contributors! ❤️
 
@@ -8,6 +8,7 @@
 
 ### Misc
 
+- update readmne ([dbd5b6a](https://github.com/CrystalNET-org/powerdns-auth/commit/dbd5b6a3c42d65bbe0aee23b9bae8381112f6ed9))
 - use short notation like upstream ([99f15f6](https://github.com/CrystalNET-org/powerdns-auth/commit/99f15f619fdb9f2340e4c96c120aaa2757777979))
 - correct image name for push ([3789d61](https://github.com/CrystalNET-org/powerdns-auth/commit/3789d616a8f7cc43421a4e54e63d493d6c6f84c9))
 - optimize size and performance ([21c4682](https://github.com/CrystalNET-org/powerdns-auth/commit/21c4682396ce2b2cbf8c11da56e0857a8621126f))
