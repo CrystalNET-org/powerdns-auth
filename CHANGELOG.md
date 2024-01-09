@@ -8,6 +8,7 @@
 
 ### Misc
 
+- remove redundant build dependencies ([7098f2d](https://github.com/CrystalNET-org/powerdns-auth/commit/7098f2df9ae8d0bd0d2cf175857d8bdc43054db7))
 - clean up docker image for smaller size ([8d9ea06](https://github.com/CrystalNET-org/powerdns-auth/commit/8d9ea065183042297e202a70d337fd9755c20dea))
 - update readmne ([13e167d](https://github.com/CrystalNET-org/powerdns-auth/commit/13e167df949b2ca1a5ee1bc6c089b5fc5a3aa68c))
 - update readmne ([dbe05de](https://github.com/CrystalNET-org/powerdns-auth/commit/dbe05de5486c52de20da6dfc1011e74d0c3f0fcf))
