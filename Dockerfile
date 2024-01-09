@@ -28,7 +28,9 @@ RUN curl -sSL https://downloads.powerdns.com/releases/pdns-$POWERDNS_VERSION.tar
         --exec-prefix="/opt/pdns" \
         --sysconfdir="/etc/pdns" \
         --disable-lua-records \
+        --without-tools \
         --without-sqlite3 \
+        --without-systemd \
         --with-libsodium \
         --with-socketdir=/tmp \
         --with-modules="bind gmysql gpgsql pipe" && \
