@@ -6,7 +6,6 @@ ENV POWERDNS_VERSION=4.8.4
 RUN apk --update --no-cache add \
     bash \
     libpq \
-    sqlite-libs \
     libstdc++ \
     libgcc \
     mariadb-client \
@@ -17,24 +16,23 @@ RUN apk --update --no-cache add \
     make \
     mariadb-dev \
     postgresql-dev \
-    sqlite-dev \
     curl \
     boost-dev \
     mariadb-connector-c-dev \
-    libsodium-dev \
-    bash
+    libsodium-dev
 
 RUN curl -sSL https://downloads.powerdns.com/releases/pdns-$POWERDNS_VERSION.tar.bz2 | tar xj -C /tmp && \
     cd /tmp/pdns-$POWERDNS_VERSION && \
-    STATIC=semi ./configure \
+    ./configure \
         --prefix="/opt/pdns" \
         --exec-prefix="/opt/pdns" \
         --sysconfdir="/etc/pdns" \
+        --disable-lua-records \
         --without-sqlite3 \
         --with-libsodium \
         --with-socketdir=/tmp \
         --with-modules="bind gmysql gpgsql pipe" && \
-    STATIC=semi make -j8 && make install-strip && \
+    make -j8 && make install-strip && \
     rm /opt/pdns/share -r && \
     ls /opt/*
     
