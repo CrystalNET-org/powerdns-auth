@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.0.1](https://github.com/CrystalNET-org/powerdns-auth/releases/tag/0.0.1) - 2024-01-05
+## [0.0.1](https://github.com/CrystalNET-org/powerdns-auth/releases/tag/0.0.1) - 2024-01-09
 
 ### ❤️ Thanks to all contributors! ❤️
 
@@ -8,6 +8,7 @@
 
 ### Misc
 
+- clean up docker image for smaller size ([8d9ea06](https://github.com/CrystalNET-org/powerdns-auth/commit/8d9ea065183042297e202a70d337fd9755c20dea))
 - update readmne ([13e167d](https://github.com/CrystalNET-org/powerdns-auth/commit/13e167df949b2ca1a5ee1bc6c089b5fc5a3aa68c))
 - update readmne ([dbe05de](https://github.com/CrystalNET-org/powerdns-auth/commit/dbe05de5486c52de20da6dfc1011e74d0c3f0fcf))
 - update readmne ([e38ae9c](https://github.com/CrystalNET-org/powerdns-auth/commit/e38ae9c4c422322c57d4b87be290dc636a708dc6))
