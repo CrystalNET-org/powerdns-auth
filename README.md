@@ -14,13 +14,13 @@ This image is designed to be run rootless and with a readonly rootfs. Generally,
 Pull the PowerDNS Docker image:
 
 ```
-docker pull crystalnet-org/powerdns-auth:<tag>
+docker pull ghcr.io/crystalnet-org/powerdns-auth:<tag>
 ```
 
 Run the PowerDNS container with default settings (no database backend):
 
 ```
-docker run -d -p 53:10353/tcp -p 53:10353/udp crystalnet-org/powerdns-auth:<tag>
+docker run -d -p 53:10353/tcp -p 53:10353/udp ghcr.io/crystalnet-org/powerdns-auth:<tag>
 ```
 
 ## Configuration
@@ -140,7 +140,7 @@ The image includes two scripts for container orchestration platforms like Kubern
 version: '3.8'
 services:
   powerdns:
-    image: crystalnet-org/powerdns-auth:<tag>
+    image: ghcr.io/crystalnet-org/powerdns-auth:<tag>
     ports:
       - "53:10353/udp"
       - "53:10353/tcp"
