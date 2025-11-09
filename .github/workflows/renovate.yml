@@ -12,18 +12,20 @@ on:
 jobs:
   renovate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write       # To create/update branches
-      pull-requests: write  # To create/update PRs
+    # No 'permissions:' block is needed, as the PAT provides its own.
 
     steps:
-      - name: Checkout
+      # <-- CHANGED: Added checkout step
+      # This is required so Renovate can find your renovate.json
+      # and other repository files. This fixes "No repositories found".
+      - name: Check out repository
         uses: actions/checkout@v4
+
       - name: Run Renovate
         # Use the official Renovate GitHub Action
-        # This will find your renovate.json file automatically
-        uses: renovatebot/github-action@v44.0.1
+        uses: renovatebot/github-action@latest
         with:
-          # The GITHUB_TOKEN has the required permissions (set above)
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
+          # <-- CHANGED: Use a Classic PAT, not GITHUB_TOKEN
+          # This ensures Renovate has correct permissions and
+          # its PRs will trigger your other CI workflows.
+          token: ${{ secrets.RENOVATE_TOKEN }}
