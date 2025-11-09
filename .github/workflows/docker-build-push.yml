@@ -46,6 +46,11 @@ jobs:
             platform: linux/arm64
 
     steps:
+      - name: Set lowercase repository name
+        run: |
+          echo "LOWERCASE_REPO=${REPO,,}" >> $GITHUB_ENV
+        env:
+          REPO: '${{ github.repository }}'
       - name: Prepare
         run: |
           platform=${{ matrix.platform }}
@@ -74,7 +79,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           # This pushes the image by its content digest (sha256:...)
           # We use .toLower() because registry names must be lowercase
-          outputs: type=image,"name=ghcr.io/${{ toLower(github.repository) }}",push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,"name=ghcr.io/${{ env.LOWERCASE_REPO }}",push-by-digest=true,name-canonical=true,push=true
           # Cache is now scoped by platform
           cache-from: type=gha,scope=build-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,scope=build-${{ env.PLATFORM_PAIR }},mode=max
@@ -106,6 +111,11 @@ jobs:
       packages: write # Needed to push the final manifest
 
     steps:
+      - name: Set lowercase repository name
+        run: |
+          echo "LOWERCASE_REPO=${REPO,,}" >> $GITHUB_ENV
+        env:
+          REPO: '${{ github.repository }}'
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
@@ -130,7 +140,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           # Use .toLower() here as well
-          images: ghcr.io/${{ github.repository.toLower() }}
+          images: ghcr.io/${{ env.LOWERCASE_REPO }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -147,4 +157,4 @@ jobs:
           #    and creates the image@sha256:... entry for each platform.
           # 3. 'docker buildx imagetools create' combines them into one manifest.
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ toLower(github.repository) }}@sha256:%s ' *)
+            $(printf 'ghcr.io/${{ env.LOWERCASE_REPO }}@sha256:%s ' *)
