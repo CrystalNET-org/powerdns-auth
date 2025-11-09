@@ -36,7 +36,7 @@ The environment variables are derived from the PowerDNS settings by converting t
 To configure PowerDNS Server to launch the API, you can set the corresponding environment variables:
 
 ```
-export PDNS_LAUNCH=gmysql,api
+export PDNS_LAUNCH=gmysql
 export PDNS_API=yes
 export PDNS_API_KEY=your-api-key
 export PDNS_API_PORT=8081
@@ -45,7 +45,7 @@ export PDNS_API_PORT=8081
 These environment variables will be translated into the following PowerDNS command line parameters on startup:
 
 ```
---launch=gmysql,api
+--launch=gmysql
 --api=yes
 --api-key=your-api-key
 --api-port=8081
@@ -146,7 +146,7 @@ services:
       - "53:10353/tcp"
       - "8081:8081/tcp"
     environment:
-      - PDNS_LAUNCH=gmysql,api
+      - PDNS_LAUNCH=gmysql
       - PDNS_API=yes
       - PDNS_API_KEY=my-super-secret-key
       - PDNS_GMYSQL_HOST=db
