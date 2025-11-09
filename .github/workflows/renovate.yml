@@ -30,4 +30,4 @@ jobs:
           # its PRs will trigger your other CI workflows.
           token: ${{ secrets.RENOVATE_TOKEN }}
         env:
-          RENOVATE_AUTODISCOVER: true
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
