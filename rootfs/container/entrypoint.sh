@@ -105,7 +105,6 @@ sync_mysql_schema() {
 # --- PostgreSQL Schema Sync ---
 sync_pgsql_schema() {
     local schema_file="/etc/pdns/pgsql_schema.sql"
-    local schema_name="pdns"
     local temp_schema_name="pdns_upstream_check" # NEW: Temporary schema name
     
     # Verify PostgreSQL-related environment variables
@@ -118,6 +117,7 @@ sync_pgsql_schema() {
     )
     check_required_vars "${pgsql_vars[@]}"
 
+    local schema_name=$PDNS_GPGSQL_DBNAME
     if [ ! -e "$schema_file" ]; then
         log "Error: PostgreSQL schema file $schema_file not found."
         exit 1
