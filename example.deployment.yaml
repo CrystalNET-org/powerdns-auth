@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels: {}
+  name: powerdns-auth
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {}
+  template:
+    metadata:
+      labels: {}
+    spec:
+      containers:
+      - name: powerdns-auth
+        image: ghcr.io/crystalnet-org/powerdns-auth:5.0.1-8
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: PDNS_SETUID
+          value: "1001"
+        - name: PDNS_SETGID
+          value: "1001"
+        - name: PDNS_API
+          value: "yes"
+        - name: PDNS_API_KEY
+          valueFrom:
+            secretKeyRef:
+              key: POWERDNS_API_KEY
+              name: powerdns-secret
+        - name: PDNS_LAUNCH
+          value: "gpgsql"
+        - name: PDNS_WEBSERVER
+          value: "yes"
+        - name: PDNS_WEBSERVER_PORT
+          value: "8081"
+        - name: PDNS_WEBSERVER_ADDRESS
+          value: "0.0.0.0"
+        - name: PDNS_WEBSERVER_ALLOW_FROM
+          value: "0.0.0.0/0"
+        - name: PDNS_LOGLEVEL
+          value: "3"
+        - name: PDNS_ALLOW_AXFR_IPS
+          value: "127.0.0.1"
+        - name: PDNS_DISABLE_AXFR
+          value: "no"
+        - name: PDNS_GPGSQL_HOST
+          valueFrom:
+            secretKeyRef:
+              name: powerdns-psql-pguser-powerdns
+              key: host
+        - name: PDNS_GPGSQL_PORT
+          valueFrom:
+            secretKeyRef:
+              name: powerdns-psql-pguser-powerdns
+              key: port
+        - name: PDNS_GPGSQL_DBNAME
+          valueFrom:
+            secretKeyRef:
+              name: powerdns-psql-pguser-powerdns
+              key: dbname
+        - name: PDNS_GPGSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: powerdns-psql-pguser-powerdns
+              key: user
+        - name: PDNS_GPGSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: powerdns-psql-pguser-powerdns
+              key: password
+        - name: PDNS_GPGSQL_DNSSEC
+          value: "yes"
+
+        startupProbe:
+          httpGet:
+            path: /
+            port: api
+            scheme: HTTP
+          failureThreshold: 20
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: api
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        readinessProbe:
+          exec:
+            command:
+            - /container/check_readyness.sh
+          failureThreshold: 3
+          initialDelaySeconds: 30
+          periodSeconds: 5
+
+        ports:
+        - containerPort: 10353
+          name: dns-udp
+          hostPort: 53
+          protocol: UDP
+        - containerPort: 10353
+          name: dns-tcp
+          hostPort: 53
+          protocol: TCP
+        - containerPort: 8081
+          name: api
+          protocol: TCP
+
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+        resources: {}
+
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
