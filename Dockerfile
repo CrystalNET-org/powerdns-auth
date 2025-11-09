@@ -70,4 +70,4 @@ RUN chmod +x /container/*.sh
 
 EXPOSE 10353/tcp 10353/udp
 
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/container/entrypoint.sh"]
