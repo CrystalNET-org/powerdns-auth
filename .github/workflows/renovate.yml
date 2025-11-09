@@ -20,7 +20,7 @@ jobs:
       - name: Run Renovate
         # Use the official Renovate GitHub Action
         # This will find your renovate.json file automatically
-        uses: renovatebot/github-action
+        uses: renovatebot/github-action@v44.0.1
         with:
           # The GITHUB_TOKEN has the required permissions (set above)
           token: ${{ secrets.GITHUB_TOKEN }}
