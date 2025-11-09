@@ -42,7 +42,7 @@ FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.22
 LABEL author="Lukas Wingerberg"
 LABEL author_email="h@xx0r.eu"
 
-RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
+RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories && \
     apk --update --no-cache add \
         bash \
         libpq \
