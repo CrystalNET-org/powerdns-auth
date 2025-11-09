@@ -190,11 +190,6 @@ sync_pgsql_schema() {
             "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = '$schema_name' ORDER BY 1;" \
             | tr -d '[:space:]' | sed '/^$/d') # remove whitespace and empty lines
 
-        # 5. Clean up temporary schema (now that we have the fingerprints)
-        log "Dropping temporary schema '$temp_schema_name'..."
-        psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -c "DROP SCHEMA IF EXISTS \"$temp_schema_name\" CASCADE;" --quiet
-
-        # 6. Compare and show differences
         local schema_diff
         # `diff -U 0` shows only differences. `tail` removes the header.
         # We compare "golden" (expected) vs "live" (actual)
@@ -213,7 +208,9 @@ sync_pgsql_schema() {
         else
             log "Schema structure is in sync. Assuming schema is compatible."
         fi
-        # --- END OF NEW LOGIC ---
+
+        log "Dropping temporary schema '$temp_schema_name'..."
+        psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -c "DROP SCHEMA IF EXISTS \"$temp_schema_name\" CASCADE;" --quiet
     fi
 
     unset PGPASSWORD
