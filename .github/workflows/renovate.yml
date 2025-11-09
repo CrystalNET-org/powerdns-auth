@@ -24,3 +24,4 @@ jobs:
         with:
           # The GITHUB_TOKEN has the required permissions (set above)
           token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
