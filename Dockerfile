@@ -1,4 +1,4 @@
-FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.19 AS builder
+FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.22 AS builder
 
 # renovate: datasource=github-tags depName=PowerDNS/pdns extractVersion=^auth-(?<version>.*)$ versioning=semver
 ENV POWERDNS_VERSION=4.8.4
@@ -38,7 +38,7 @@ RUN curl -sSL https://downloads.powerdns.com/releases/pdns-$POWERDNS_VERSION.tar
     rm /opt/pdns/share -r && \
     ls /opt/*
     
-FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.19
+FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.22
 LABEL author="Lukas Wingerberg"
 LABEL author_email="h@xx0r.eu"
 
@@ -49,14 +49,25 @@ RUN apk --update --no-cache add \
     mariadb-connector-c \
     lua-dev \
     libsodium \
-    libcurl
+    libcurl \
+    mariadb-client \
+    postgresql-client \
+    curl \
+    procps \
+    percona-toolkit
 
 RUN addgroup -S pdns 2>/dev/null && \
     adduser -S -D -H -h /var/empty -s /bin/false -G pdns -g pdns pdns 2>/dev/null
 
 COPY --from=builder /opt /opt
+
 ADD rootfs/ /
+
+RUN chmod +x /container/*.sh
 
 EXPOSE 10353/tcp 10353/udp
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD [ "/container/docker-readiness.sh" ]
+  
 ENTRYPOINT ["/entrypoint.sh"]
