@@ -2,28 +2,45 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "dependencyDashboard": true,
   "packageRules": [
-    {"datasources": ["docker"],  "registryUrls": ["https://harbor.crystalnet.org/dockerhub-proxy"]}
-  ],
-  "regexManagers": [
     {
-      "fileMatch": ["^Dockerfile$"],
+      "matchDatasources": [
+        "docker"
+      ],
+      "registryUrls": [
+        "https://harbor.crystalnet.org/dockerhub-proxy"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
       "matchStrings": [
         "datasource=(?<datasource>.*?) depName=(?<depName>.*?)(?: extractVersion=(?<extractVersion>.+?))?( versioning=(?<versioning>.*?))?\\sENV .*?_VERSION=(?<currentValue>.*)\\s"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
     {
-      "fileMatch": ["^Dockerfile$"],
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
       "matchStrings": [
         "ARG IMAGE=(?<depName>.*?):(?<currentValue>.*?)@(?<currentDigest>sha256:[a-f0-9]+)\\s"
       ],
       "datasourceTemplate": "docker"
     },
     {
-      "fileMatch": ["Dockerfile$"],
-      "matchStrings": ["FROM harbor\\.crystalnet\\.org/dockerhub-proxy/(?<depName>.*?):(?<currentValue>.*?)\n"],
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/Dockerfile$/"
+      ],
+      "matchStrings": [
+        "FROM harbor\\.crystalnet\\.org/dockerhub-proxy/(?<depName>.*?):(?<currentValue>.*?)\n"
+      ],
       "datasourceTemplate": "docker"
     }
   ]
 }
-
