@@ -1,3 +1,16 @@
+Yes, I can integrate that advanced pattern into your workflow.
+
+This new structure is much more efficient. It replaces QEMU emulation with parallel, native builds and then merges them in a final "manifest" job.
+
+Here is your complete workflow file, updated with the new matrix-based, native-build strategy.
+
+Updated Workflow File
+I've replaced your single build-and-push job with the two new jobs: build (which runs in parallel for each architecture) and merge (which creates the final multi-arch image).
+
+YAML
+
+# This workflow builds and pushes a multi-arch Docker image to GHCR
+# It builds amd64 and arm64 natively in parallel, then merges them.
 name: Build and Push Docker Image
 
 on:
@@ -19,93 +32,83 @@ on:
   workflow_dispatch: {} # Allows manual triggering
 
 jobs:
-  build-amd64:
-    name: Build for linux/amd64
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write # Needed to push to GHCR
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      # No QEMU needed here! We are building natively.
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push amd64 image
-        id: build-amd64
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          # We only push on merge/tag, not on PRs
-          push: ${{ github.event_name != 'pull_request' }}
-          # Tag with the unique commit SHA for this platform
-          # The 'push-manifest' job will use this.
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-amd64
-          # Use GitHub Actions cache for faster builds
-          cache-from: type=gha,scope=amd64
-          cache-to: type=gha,scope=amd64,mode=max
-
-  build-arm64:
-    name: Build for linux/arm64
-    runs-on: ubuntu-latest-arm64 # <-- This is the native ARM runner
-    permissions:
-      contents: read
-      packages: write # Needed to push to GHCR
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v5
-
-      # No QEMU needed here! We are building natively.
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push arm64 image
-        id: build-arm64
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/arm64 # <-- Build for ARM64 only
-          # We only push on merge/tag, not on PRs
-          push: ${{ github.event_name != 'pull_request' }}
-          # Tag with the unique commit SHA for this platform
-          # The 'push-manifest' job will use this.
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}-arm64
-          # Use GitHub Actions cache for faster builds
-          cache-from: type=gha,scope=arm64
-          cache-to: type=gha,scope=arm64,mode=max
-
-  push-manifest:
-    name: Push multi-arch manifest
-    # This job must run after both build jobs are complete
-    needs: [build-amd64, build-arm64]
+  build:
+    name: Build OCI Image
+    # This 'if' condition is important:
+    # The new pattern *requires* pushing (by digest) to work.
+    # To avoid pushing on PRs, we skip the build and merge jobs entirely.
+    # This matches your original logic of only pushing on 'main' or tag events.
+    if: github.event_name != 'pull_request'
     
-    # IMPORTANT: This job only runs on push events (main or tags)
-    # It will be skipped on pull_request events.
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write # Needed to push by digest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+            platform: linux/amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux/arm64
+
+    steps:
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          # Creates an env var like 'linux-amd64' for cache scoping
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          # This pushes the image by its content digest (sha256:...)
+          # We use .toLower() because registry names must be lowercase
+          outputs: type=image,"name=ghcr.io/${{ github.repository.toLower() }}",push-by-digest=true,name-canonical=true,push=true
+          # Cache is now scoped by platform
+          cache-from: type=gha,scope=build-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,scope=build-${{ env.PLATFORM_PAIR }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          # Save the digest to a file to pass to the merge job
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+          
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge & Push Manifest
+    # This job only runs after 'build' succeeds and not on PRs
+    needs: build
     if: github.event_name != 'pull_request'
     
     runs-on: ubuntu-latest
@@ -114,6 +117,16 @@ jobs:
       packages: write # Needed to push the final manifest
 
     steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true # Combines all artifacts into one directory
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -122,35 +135,27 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract Docker metadata
-        # This gets the *final* tags we want, like 'latest', 'v1.2.3', etc.
+        # This is your original metadata step, moved here
+        # to tag the *final* manifest.
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          # Use .toLower() here as well
+          images: ghcr.io/${{ github.repository.toLower() }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create and push manifest list
+        working-directory: /tmp/digests
+        env:
+          # Pass the JSON output of the metadata step to jq
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
         run: |
-          # Define the platform-specific images we just built
-          IMG_AMD64="ghcr.io/${{ github.repository }}:${{ github.sha }}-amd64"
-          IMG_ARM64="ghcr.io/${{ github.repository }}:${{ github.sha }}-arm64"
-          
-          echo "Creating manifest for AMD64: $IMG_AMD64"
-          echo "Creating manifest for ARM64: $IMG_ARM64"
-          
-          echo "Final tags will be:"
-          echo "${{ steps.meta.outputs.tags }}"
-
-          # Loop through each tag generated by the metadata action (e.g., 'latest', 'v1.2.3')
-          # and create/push a manifest pointing to our two platform-specific images
-          for tag in ${{ steps.meta.outputs.tags }}; do
-            echo "Creating and pushing manifest for: $tag"
-            docker manifest create $tag \
-              $IMG_AMD64 \
-              $IMG_ARM64
-            
-            docker manifest push $tag
-          done
+          # 1. 'jq' reads the metadata JSON and creates a '-t' flag for each tag
+          # 2. 'printf' reads all the downloaded digest files (like 'a1b2c3...')
+          #    and creates the image@sha256:... entry for each platform.
+          # 3. 'docker buildx imagetools create' combines them into one manifest.
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository.toLower() }}@sha256:%s ' *)
