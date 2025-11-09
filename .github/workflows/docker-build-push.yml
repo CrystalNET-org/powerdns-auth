@@ -5,9 +5,24 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ "main" ]
+    # <-- CHANGED: Ignore builds for README or workflow file changes
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/**'
+      - 'renovate.json'
+      
+  # <-- ADDED: A separate trigger for tags that ALWAYS runs
+  push:
     tags: [ 'v*.*.*' ] # Matches v1.0.0, v1.2.3, etc.
+
   pull_request:
     branches: [ "main" ]
+    # <-- CHANGED: Ignore validation builds for README or workflow file changes
+    paths-ignore:
+      - 'README.md'
+      - '.github/workflows/**'
+      - 'renovate.json'
+
   workflow_dispatch: {} # Allows manual triggering
 
 jobs:
