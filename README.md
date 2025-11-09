@@ -1,7 +1,7 @@
 # PowerDNS Docker Image
 
 Welcome to the PowerDNS Docker image, a containerized instance of the authoritative DNS server.
-This image is designed to be run rootless and with a readonly rootfs. Generally, security has been taken seriously and no writes should occur outside of `/tmp/`.
+This image is designed to be run rootless and with a readonly rootfs. Generally, security has been taken seriously and no writes should occur.
 
 ## Getting Started
 
