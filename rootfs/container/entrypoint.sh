@@ -80,9 +80,8 @@ sync_mysql_schema() {
     log "Comparing MySQL schema with local schema.sql file..."
 
     # Dump current schema and diff it with the blessed schema file
-    mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"
-
-    if [ $? -eq 0 ]; then
+    # <-- CHANGED: Wrapped in 'if' to correctly handle diff exit codes with 'set -e'
+    if mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"; then
         log "MySQL schema is already in sync with the local schema.sql file."
     else
         log "Detected differences in MySQL schema. Synchronizing using pt-table-sync..."
@@ -142,8 +141,10 @@ check_pgsql_availability() {
 
 sync_pgsql_schema() {
     # Compares the PostgreSQL schema and exits if different
+    # Also initializes the DB if it's empty.
     local schema_file="/etc/pdns/pgsql_schema.sql"
     local temp_diff_file="/tmp/schema_diff.sql"
+    local psql_init_log="/tmp/psql_init.log"
     
     log "Checking for existing PostgreSQL schema in database $PDNS_GPGSQL_DBNAME..."
 
@@ -154,23 +155,61 @@ sync_pgsql_schema() {
 
     export PGPASSWORD="$PDNS_GPGSQL_PASSWORD"
     
-    log "Comparing PostgreSQL schema with local schema.sql file..."
+    # Check if DB is empty
+    log "Checking table count in 'public' schema..."
+    local table_count_query_result
+    table_count_query_result=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
     
-    # Dump current schema and diff it with the blessed schema file
-    pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only | diff - "$schema_file" > "$temp_diff_file"
-
-    if [ $? -eq 0 ]; then
-        log "PostgreSQL schema is already in sync with the local schema.sql file."
-    else
-        log "Error: Detected differences in PostgreSQL schema."
-        log "Schema diff:"
-        cat "$temp_diff_file"
-        log "Automatic schema synchronization is not supported for PostgreSQL."
-        log "Please apply migrations manually or update the $schema_file."
+    if [ $? -ne 0 ]; then
+        log "Error: Failed to query table count from database '$PDNS_GPGSQL_DBNAME'. Check permissions or if DB exists."
         unset PGPASSWORD
         exit 1
     fi
     
+    # Trim whitespace from psql output
+    local table_count=$(echo "$table_count_query_result" | xargs)
+
+    if [ "$table_count" -eq 0 ]; then
+        # Database is empty. Load the schema.
+        log "No tables found in 'public' schema. Database appears to be empty."
+        log "Initializing database from $schema_file..."
+        
+        if psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -f "$schema_file" &> "$psql_init_log"; then
+            log "PostgreSQL schema successfully initialized."
+        else
+            log "Error: Failed to initialize PostgreSQL schema from $schema_file."
+            log "psql output:"
+            cat "$psql_init_log"
+            rm -f "$psql_init_log"
+            unset PGPASSWORD
+            exit 1
+        fi
+        rm -f "$psql_init_log"
+    else
+        # Database is NOT empty. Perform the original diff check.
+        log "Database contains $table_count tables in 'public' schema. Proceeding with schema diff check..."
+        
+        # <-- CHANGED: This is the critical fix.
+        # We move the 'pg_dump | diff' command inside the 'if' statement.
+        # This captures its non-zero exit code (if there's a diff)
+        # and prevents 'set -e' from killing the script.
+        log "Comparing PostgreSQL schema with local schema.sql file..."
+        if pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only | diff - "$schema_file" > "$temp_diff_file"; then
+            log "PostgreSQL schema is already in sync with the local schema.sql file."
+        else
+            # This 'else' block will now be executed correctly.
+            log "Error: Detected differences in PostgreSQL schema."
+            log "Schema diff:"
+            cat "$temp_diff_file"
+            log "Automatic schema synchronization is not supported for PostgreSQL."
+            log "Please apply migrations manually or update the $schema_file."
+            rm -f "$temp_diff_file" # Clean up on failure
+            unset PGPASSWORD
+            exit 1 # Exit *intentionally*
+        fi
+    fi
+
+    rm -f "$temp_diff_file" # Clean up on success
     unset PGPASSWORD
 }
 
