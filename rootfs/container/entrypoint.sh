@@ -254,6 +254,3 @@ log "Starting PowerDNS server with arguments: ${cmd_args[*]} $@"
 # Use 'exec' to replace the shell process with the pdns_server process
 # This is the standard way to run the main application in a container
 exec /opt/pdns/sbin/pdns_server "${cmd_args[@]}" "$@"
-
-# The 'wait' from your original script is no longer needed because 'exec' 
-# hands over process control entirely. If pdns_server exits, the container stops.
