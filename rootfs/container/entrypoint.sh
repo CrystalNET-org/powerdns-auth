@@ -96,7 +96,6 @@ sync_mysql_schema() {
 
     log "Database is not empty. Checking for schema differences..."
 
-    # <-- CHANGED: Wrapped diff in an 'if' to capture exit code and prevent 'set -e' exit
     if ! mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"; then
         log "Detected differences in MySQL schema. Diff output:"
         cat "$temp_diff_file"
@@ -128,7 +127,6 @@ sync_mysql_schema() {
 sync_pgsql_schema() {
     local schema_file="/etc/pdns/pgsql_schema.sql"
     local temp_diff_file="/tmp/schema_diff.sql"
-    # <-- CHANGED: Schema name is hardcoded to 'pdns' as requested
     local schema_name="pdns"
 
     # Verify PostgreSQL-related environment variables
@@ -150,7 +148,6 @@ sync_pgsql_schema() {
     export PGPASSWORD="$PDNS_GPGSQL_PASSWORD"
 
     # Check if the target schema is empty or non-existent
-    # <-- CHANGED: Check count in 'pdns' schema
     local table_count
     log "Checking table count in '$schema_name' schema..."
     table_count=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c \
@@ -167,7 +164,6 @@ sync_pgsql_schema() {
         log "No tables found in '$schema_name' schema. Database appears to be empty."
         log "Initializing database from $schema_file (forcing schema '$schema_name')..."
         
-        # <-- CHANGED: Wrap schema import to force 'pdns' schema and search_path
         (
             echo "CREATE SCHEMA IF NOT EXISTS \"$schema_name\";"
             echo "SET search_path = \"$schema_name\";"
@@ -185,9 +181,16 @@ sync_pgsql_schema() {
         log "Database is not empty ($table_count tables found in '$schema_name'). Checking for schema differences..."
         log "Comparing PostgreSQL schema '$schema_name' with local schema.sql file..."
 
-        # <-- CHANGED: Wrapped diff in 'if' and added '-n "$schema_name"' to pg_dump
-        # We only dump the specific schema_name for a clean diff
-        if ! pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only -n "$schema_name" | diff - "$schema_file" > "$temp_diff_file"; then
+        if ! pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only -n "$schema_name" --no-owner --no-privileges \
+            | sed -e "s/$schema_name\.//g" \
+                  -e '/^SET /d' \
+                  -e '/^SELECT pg_catalog.set_config/d' \
+                  -e '/^--/d' \
+                  -e '/^CREATE SCHEMA/d' \
+                  -e '/^ALTER SCHEMA/d' \
+                  -e '/^$/d' \
+            | diff -Bw - "$schema_file" > "$temp_diff_file"; then
+
             log "Detected differences in PostgreSQL schema '$schema_name'. Diff output:"
             cat "$temp_diff_file"
             log "Error: Schema mismatch. Please apply migrations manually."
