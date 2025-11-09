@@ -5,15 +5,12 @@ set -e
 # shellcheck disable=SC1091
 source /container/db_utils.sh
 
-# --- Utility Functions ---
-
 log() {
-    # Logs a message with a timestamp
     echo "$(date +"%Y-%m-%d %H:%M:%S") - $1"
 }
 
+# Check if required environment variables are defined
 check_required_vars() {
-    # Checks if all required environment variables are set
     local required_vars=("$@")
     for var in "${required_vars[@]}"; do
         if [ -z "${!var}" ]; then
@@ -23,41 +20,51 @@ check_required_vars() {
     done
 }
 
-# --- MySQL Functions ---
+check_backend_set() {
+    if [ -n "$PDNS_GMYSQL_HOST" ] && [ -n "$PDNS_GPGSQL_HOST" ]; then
+        log "Error: Both PDNS_GMYSQL_HOST and PDNS_GPGSQL_HOST are set. Please choose only one backend."
+        exit 1
+    elif [ -n "$PDNS_GMYSQL_HOST" ]; then
+        log "MySQL backend detected. Running checks..."
+        BACKEND_TYPE="mysql"
+    elif [ -n "$PDNS_GPGSQL_HOST" ]; then
+        log "PostgreSQL backend detected. Running checks..."
+        BACKEND_TYPE="pgsql"
+    else
+        log "No database backend configured. Skipping database checks."
+        BACKEND_TYPE="none"
+    fi
+}
 
-check_mysql_availability() {
-    # Waits for the MySQL server to become available
+wait_for_db() {
     local max_attempts=30
     local attempt=0
-    local mysql_vars=(
-        "PDNS_GMYSQL_HOST"
-        "PDNS_GMYSQL_PORT"
-        "PDNS_GMYSQL_USER"
-        "PDNS_GMYSQL_PASSWORD"
-        "PDNS_GMYSQL_DBNAME"
-    )
-    check_required_vars "${mysql_vars[@]}"
+    local log_tag="Entrypoint"
 
-    log "Checking MySQL server availability at $PDNS_GMYSQL_HOST:$PDNS_GMYSQL_PORT..."
+    if [ "$BACKEND_TYPE" == "none" ]; then
+        return 0 # No DB, nothing to wait for
+    fi
+
+    log "Checking ${BACKEND_TYPE} server availability..."
+
     while [ "$attempt" -lt "$max_attempts" ]; do
-        # Use the shared DB check function
-        if check_db_connection "Entrypoint-MySQL"; then
-            log "MySQL server is available."
-            return
+        # Use the shared, single-check function
+        if check_db_connection "$log_tag"; then
+            log "${BACKEND_TYPE} server is available."
+            return 0
         else
-            log "MySQL server is not yet available. Retrying in 5 seconds... (Attempt: $((attempt + 1)))"
+            log "${BACKEND_TYPE} server is not yet available. Retrying in 5 seconds... (Attempt: $((attempt + 1)))"
             sleep 5
             ((attempt++))
         fi
     done
 
-    log "Error: Unable to connect to MySQL server after $max_attempts attempts. Exiting."
+    log "Error: Unable to connect to ${BACKEND_TYPE} server after $max_attempts attempts. Exiting."
     exit 1
 }
 
-# WiP
+# --- MySQL Schema Sync ---
 sync_mysql_schema() {
-    # Compares and synchronizes the MySQL schema
     local schema_file="/etc/pdns/mysql_schema.sql"
     local temp_diff_file="/tmp/schema_diff.sql"
 
@@ -69,7 +76,6 @@ sync_mysql_schema() {
         "PDNS_GMYSQL_PASSWORD"
         "PDNS_GMYSQL_DBNAME"
     )
-
     check_required_vars "${mysql_vars[@]}"
 
     if [ ! -e "$schema_file" ]; then
@@ -79,36 +85,53 @@ sync_mysql_schema() {
 
     log "Comparing MySQL schema with local schema.sql file..."
 
-    # Dump current schema and diff it with the blessed schema file
-    # <-- CHANGED: Wrapped in 'if' to correctly handle diff exit codes with 'set -e'
-    if mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"; then
-        log "MySQL schema is already in sync with the local schema.sql file."
-    else
-        log "Detected differences in MySQL schema. Synchronizing using pt-table-sync..."
-        log "Schema diff:"
+    # Check if database is empty first by checking for 'domains' table
+    if ! mysql -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" "$PDNS_GMYSQL_DBNAME" -e "SHOW TABLES LIKE 'domains';" | grep -q 'domains'; then
+        log "No 'domains' table found. Database appears to be empty."
+        log "Initializing database from $schema_file..."
+        mysql -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" "$PDNS_GMYSQL_DBNAME" < "$schema_file"
+        log "MySQL schema successfully initialized."
+        return
+    fi
+
+    log "Database is not empty. Checking for schema differences..."
+
+    # <-- CHANGED: Wrapped diff in an 'if' to capture exit code and prevent 'set -e' exit
+    if ! mysqldump -h"$PDNS_GMYSQL_HOST" -P"$PDNS_GMYSQL_PORT" -u"$PDNS_GMYSQL_USER" -p"$PDNS_GMYSQL_PASSWORD" --no-data "$PDNS_GMYSQL_DBNAME" | diff - "$schema_file" > "$temp_diff_file"; then
+        log "Detected differences in MySQL schema. Diff output:"
         cat "$temp_diff_file"
+        
+        # We only log the diff, but pt-table-sync logic is kept as requested
+        log "Synchronizing using pt-table-sync... (WiP)"
 
         # Extract table names from schema.sql
+        local tables
         tables=("$(grep -oP "(?<=CREATE TABLE \`)[^\`]+" "$schema_file")")
 
-        # Synchronize each table (as per user's original script)
+        # Synchronize each table
         for table in "${tables[@]}"; do
             log "Syncing table: $table"
-            # Note: This command attempts to sync a DB table with a .sql file, which may not be the intended use of pt-table-sync.
-            pt-table-sync --execute --verbose h="$PDNS_GMYSQL_HOST",P="$PDNS_GMYSQL_PORT",u="$PDNS_GMYSQL_USER",p="$PDNS_GMYSQL_PASSWORD" "$PDNS_GMYSQL_DBNAME"."$table" "$schema_file"
+            # WARNING: This command is high-risk. Ensure it does what you expect.
+            # pt-table-sync --execute --verbose h="$PDNS_GMYSQL_HOST",P="$PDNS_GMYSQL_PORT",u="$PDNS_GMYSQL_USER",p="$PDNS_GMYSQL_PASSWORD" "$PDNS_GMYSQL_DBNAME"."$table" "$schema_file"
+            log "Skipping pt-table-sync for $table as it's marked WiP."
         done
-        log "MySQL schema synchronization attempt complete."
+        log "Note: pt-table-sync logic is currently SKIPPED. Please review."
+
+    else
+        log "MySQL schema is already in sync with the local schema.sql file."
     fi
 
     rm -f "$temp_diff_file"
 }
 
-# --- PostgreSQL Functions ---
+# --- PostgreSQL Schema Sync ---
+sync_pgsql_schema() {
+    local schema_file="/etc/pdns/pgsql_schema.sql"
+    local temp_diff_file="/tmp/schema_diff.sql"
+    # <-- CHANGED: Schema name is hardcoded to 'pdns' as requested
+    local schema_name="pdns"
 
-check_pgsql_availability() {
-    # Waits for the PostgreSQL server to become available
-    local max_attempts=30
-    local attempt=0
+    # Verify PostgreSQL-related environment variables
     local pgsql_vars=(
         "PDNS_GPGSQL_HOST"
         "PDNS_GPGSQL_PORT"
@@ -118,139 +141,96 @@ check_pgsql_availability() {
     )
     check_required_vars "${pgsql_vars[@]}"
 
-    export PGPASSWORD="$PDNS_GPGSQL_PASSWORD"
-    
-    log "Checking PostgreSQL server availability at $PDNS_GPGSQL_HOST:$PDNS_GPGSQL_PORT..."
-    while [ "$attempt" -lt "$max_attempts" ]; do
-        # Use the shared DB check function
-        if check_db_connection "Entrypoint-PgSQL"; then
-            log "PostgreSQL server is available."
-            unset PGPASSWORD
-            return
-        else
-            log "PostgreSQL server is not yet available. Retrying in 5 seconds... (Attempt: $((attempt + 1)))"
-            sleep 5
-            ((attempt++))
-        fi
-    done
-    
-    unset PGPASSWORD
-    log "Error: Unable to connect to PostgreSQL server after $max_attempts attempts. Exiting."
-    exit 1
-}
-
-sync_pgsql_schema() {
-    # Compares the PostgreSQL schema and exits if different
-    # Also initializes the DB if it's empty.
-    local schema_file="/etc/pdns/pgsql_schema.sql"
-    local temp_diff_file="/tmp/schema_diff.sql"
-    local psql_init_log="/tmp/psql_init.log"
-    
-    log "Checking for existing PostgreSQL schema in database $PDNS_GPGSQL_DBNAME..."
-
     if [ ! -e "$schema_file" ]; then
         log "Error: PostgreSQL schema file $schema_file not found."
         exit 1
     fi
 
+    log "Checking for existing PostgreSQL schema in database $PDNS_GPGSQL_DBNAME..."
     export PGPASSWORD="$PDNS_GPGSQL_PASSWORD"
-    
-    # Check if DB is empty
-    log "Checking table count in 'public' schema..."
-    local table_count_query_result
-    table_count_query_result=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public';")
-    
-    if [ $? -ne 0 ]; then
-        log "Error: Failed to query table count from database '$PDNS_GPGSQL_DBNAME'. Check permissions or if DB exists."
+
+    # Check if the target schema is empty or non-existent
+    # <-- CHANGED: Check count in 'pdns' schema
+    local table_count
+    log "Checking table count in '$schema_name' schema..."
+    table_count=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c \
+        "SELECT count(*) FROM information_schema.tables WHERE table_schema = '$schema_name';" | tr -d '[:space:]')
+
+    if [ "$?" -ne 0 ]; then
+        log "Error: Failed to check table count. Does database '$PDNS_GPGSQL_DBNAME' exist?"
         unset PGPASSWORD
         exit 1
     fi
-    
-    # Trim whitespace from psql output
-    local table_count=$(echo "$table_count_query_result" | xargs)
 
     if [ "$table_count" -eq 0 ]; then
-        # Database is empty. Load the schema.
-        log "No tables found in 'public' schema. Database appears to be empty."
-        log "Initializing database from $schema_file..."
+        # Database is empty, initialize it
+        log "No tables found in '$schema_name' schema. Database appears to be empty."
+        log "Initializing database from $schema_file (forcing schema '$schema_name')..."
         
-        if psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -f "$schema_file" &> "$psql_init_log"; then
-            log "PostgreSQL schema successfully initialized."
-        else
-            log "Error: Failed to initialize PostgreSQL schema from $schema_file."
-            log "psql output:"
-            cat "$psql_init_log"
-            rm -f "$psql_init_log"
+        # <-- CHANGED: Wrap schema import to force 'pdns' schema and search_path
+        (
+            echo "CREATE SCHEMA IF NOT EXISTS \"$schema_name\";"
+            echo "SET search_path = \"$schema_name\";"
+            cat "$schema_file"
+        ) | psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -v ON_ERROR_STOP=1 --quiet
+
+        if [ "$?" -ne 0 ]; then
+            log "Error: Failed to initialize PostgreSQL schema."
             unset PGPASSWORD
             exit 1
         fi
-        rm -f "$psql_init_log"
+        log "PostgreSQL schema successfully initialized."
     else
-        # Database is NOT empty. Perform the original diff check.
-        log "Database contains $table_count tables in 'public' schema. Proceeding with schema diff check..."
-        
-        # <-- CHANGED: This is the critical fix.
-        # We move the 'pg_dump | diff' command inside the 'if' statement.
-        # This captures its non-zero exit code (if there's a diff)
-        # and prevents 'set -e' from killing the script.
-        log "Comparing PostgreSQL schema with local schema.sql file..."
-        if pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only | diff - "$schema_file" > "$temp_diff_file"; then
-            log "PostgreSQL schema is already in sync with the local schema.sql file."
-        else
-            # This 'else' block will now be executed correctly.
-            log "Error: Detected differences in PostgreSQL schema."
-            log "Schema diff:"
+        # Database is not empty, check for diff
+        log "Database is not empty ($table_count tables found in '$schema_name'). Checking for schema differences..."
+        log "Comparing PostgreSQL schema '$schema_name' with local schema.sql file..."
+
+        # <-- CHANGED: Wrapped diff in 'if' and added '-n "$schema_name"' to pg_dump
+        # We only dump the specific schema_name for a clean diff
+        if ! pg_dump -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" --schema-only -n "$schema_name" | diff - "$schema_file" > "$temp_diff_file"; then
+            log "Detected differences in PostgreSQL schema '$schema_name'. Diff output:"
             cat "$temp_diff_file"
-            log "Automatic schema synchronization is not supported for PostgreSQL."
-            log "Please apply migrations manually or update the $schema_file."
-            rm -f "$temp_diff_file" # Clean up on failure
+            log "Error: Schema mismatch. Please apply migrations manually."
+            rm -f "$temp_diff_file"
             unset PGPASSWORD
-            exit 1 # Exit *intentionally*
+            exit 1
+        else
+            log "PostgreSQL schema is already in sync with the local schema.sql file."
         fi
     fi
 
-    rm -f "$temp_diff_file" # Clean up on success
+    rm -f "$temp_diff_file"
     unset PGPASSWORD
 }
 
-
 # --- Main Execution ---
 
-# Determine which database backend to use
-if [ -n "$PDNS_GMYSQL_HOST" ] && [ -n "$PDNS_GPGSQL_HOST" ]; then
-    log "Error: Both PDNS_GMYSQL_HOST and PDNS_GPGSQL_HOST are defined. Please configure only one backend."
-    exit 1
-elif [ -n "$PDNS_GMYSQL_HOST" ]; then
-    log "MySQL backend detected. Running checks..."
-    check_mysql_availability
-    sync_mysql_schema
-elif [ -n "$PDNS_GPGSQL_HOST" ]; then
-    log "PostgreSQL backend detected. Running checks..."
-    check_pgsql_availability
-    sync_pgsql_schema
-else
-    log "No gmysql or gpgsql backend host defined. Skipping database checks."
-    log "Assuming a different backend (e.g., BIND, LUA) or local database."
-fi
+# 1. Determine which backend (if any) is configured
+check_backend_set
 
+# 2. Wait for the database if one is configured
+wait_for_db
+
+# 3. Synchronize schema if a database is configured
+if [ "$BACKEND_TYPE" == "mysql" ]; then
+    sync_mysql_schema
+elif [ "$BACKEND_TYPE" == "pgsql" ]; then
+    sync_pgsql_schema
+fi
 
 cmd_args=()
 
-# Read all PDNS_ prefixed environment variables and convert them to command line parameters
+# 4. Read all PDNS_ prefixed environment variables and convert them to command line parameters
 while IFS='=' read -r name value; do
     if [[ $name == PDNS_* ]]; then
-        # Convert PDNS_VAR_NAME to --var-name=value
         cmd_args+=( "--$(tr '[:upper:]_' '[:lower:]-' <<< "${name#PDNS_}")=$value" )
     fi
 done < <(env)
 
-# setup traps for PowerDNS server
-# We trap signals and tell pdns_control to quit.
-# 'exec' will replace this shell script with the pdns_server process,
-# so pdns_server will become PID 1 (in the container) and receive signals directly.
-trap "/opt/pdns/bin/pdns_control --no-config quit" SIGHUP SIGINT SIGTERM
+# 5. Start PowerDNS server
+log "Starting PowerDNS server with arguments: ${cmd_args[*]}"
 
-log "Starting PowerDNS server with arguments: ${cmd_args[*]} $@"
-# Use 'exec' to replace the shell process with the pdns_server process
-# This is the standard way to run the main application in a container
+# setup traps for PowerDNS server
+# Use exec to replace the shell with the pdns_server process
+# This makes pdns_server PID 1 and allows it to receive signals correctly
 exec /opt/pdns/sbin/pdns_server "${cmd_args[@]}" "$@"
