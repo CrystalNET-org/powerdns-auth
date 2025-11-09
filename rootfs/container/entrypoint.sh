@@ -66,7 +66,7 @@ wait_for_db() {
 # --- MySQL Schema Sync ---
 sync_mysql_schema() {
     local schema_file="/etc/pdns/mysql_schema.sql"
-    local temp_diff_file="/tmp/schema_diff.sql" # Vorerst beibehalten, falls Sie es wiederverwenden
+    local temp_diff_file="/tmp/schema_diff.sql" # Keep for now, in case you reuse it
 
     # Verify MySQL-related environment variables
     local mysql_vars=(
@@ -94,9 +94,9 @@ sync_mysql_schema() {
         return
     fi
 
-    # --- HINWEIS: 'diff'-Check ist zu unzuverlässig ---
-    # Wir könnten hier eine ähnliche Hash-Prüfung wie bei PostgreSQL implementieren,
-    # indem wir 'information_schema.columns' abfragen.
+    # --- NOTE: 'diff' check is too unreliable ---
+    # We could implement a similar hash check here as for PostgreSQL
+    # by querying 'information_schema.columns'.
     log "Database is not empty. Assuming schema is compatible. (MySQL hash check not yet implemented)"
 
     rm -f "$temp_diff_file"
@@ -106,7 +106,7 @@ sync_mysql_schema() {
 sync_pgsql_schema() {
     local schema_file="/etc/pdns/pgsql_schema.sql"
     local schema_name="pdns"
-    local temp_schema_name="pdns_upstream_check" # NEU: Temporärer Schema-Name
+    local temp_schema_name="pdns_upstream_check" # NEW: Temporary schema name
     
     # Verify PostgreSQL-related environment variables
     local pgsql_vars=(
@@ -139,7 +139,7 @@ sync_pgsql_schema() {
     fi
 
     if [ "$table_count" -eq 0 ]; then
-        # Database is empty, initialize it (LOGIK UNVERÄNDERT)
+        # Database is empty, initialize it (LOGIC UNCHANGED)
         log "No tables found in '$schema_name' schema. Database appears to be empty."
         log "Initializing database from $schema_file (forcing schema '$schema_name')..."
         
@@ -156,14 +156,14 @@ sync_pgsql_schema() {
         fi
         log "PostgreSQL schema successfully initialized."
     else
-        # --- NEUE LOGIK: In-DB-Schemavergleich ---
+        # --- NEW LOGIC: In-DB Schema Comparison ---
         log "Database is not empty ($table_count tables found). Comparing live schema to upstream schema via temp schema..."
 
-        # 1. Aufräumen, falls vorhanden
+        # 1. Clean up if exists
         log "Cleaning up old temp schema (if any)..."
         psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -c "DROP SCHEMA IF EXISTS \"$temp_schema_name\" CASCADE;" --quiet
 
-        # 2. Upstream-Schema in temporäres Schema laden
+        # 2. Load upstream schema into temporary schema
         log "Loading upstream schema into '$temp_schema_name' for comparison..."
         (
             echo "CREATE SCHEMA IF NOT EXISTS \"$temp_schema_name\";"
@@ -178,42 +178,42 @@ sync_pgsql_schema() {
             exit 1
         fi
 
-        # 3. "Soll"-Fingerabdruck (vom temp. Schema) holen
+        # 3. Get "golden" fingerprint (from temp schema)
         local golden_fingerprint
         golden_fingerprint=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c \
             "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = '$temp_schema_name' ORDER BY 1;" \
-            | tr -d '[:space:]' | sed '/^$/d') # Whitespace und Leerzeilen entfernen
+            | tr -d '[:space:]' | sed '/^$/d') # remove whitespace and empty lines
 
-        # 4. "Ist"-Fingerabdruck (vom live 'pdns' Schema) holen
+        # 4. Get "live" fingerprint (from 'pdns' schema)
         local live_fingerprint
         live_fingerprint=$(psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -t -c \
             "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = '$schema_name' ORDER BY 1;" \
-            | tr -d '[:space:]' | sed '/^$/d') # Whitespace und Leerzeilen entfernen
+            | tr -d '[:space:]' | sed '/^$/d') # remove whitespace and empty lines
 
-        # 5. Temporäres Schema aufräumen (jetzt, da wir die Fingerabdrücke haben)
+        # 5. Clean up temporary schema (now that we have the fingerprints)
         log "Dropping temporary schema '$temp_schema_name'..."
         psql -h "$PDNS_GPGSQL_HOST" -p "$PDNS_GPGSQL_PORT" -U "$PDNS_GPGSQL_USER" -d "$PDNS_GPGSQL_DBNAME" -c "DROP SCHEMA IF EXISTS \"$temp_schema_name\" CASCADE;" --quiet
 
-        # 6. Vergleichen und Unterschiede anzeigen
+        # 6. Compare and show differences
         local schema_diff
-        # `diff -U 0` zeigt nur die Unterschiede. `tail` entfernt den Header.
-        # Wir vergleichen "Soll" (golden) mit "Ist" (live)
+        # `diff -U 0` shows only differences. `tail` removes the header.
+        # We compare "golden" (expected) vs "live" (actual)
         schema_diff=$(diff -U 0 <(echo "$golden_fingerprint") <(echo "$live_fingerprint") | tail -n +3)
 
         if [ -n "$schema_diff" ]; then
             log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-            log "FEHLER: Schema-Struktur stimmt nicht überein!"
-            log "Unterschiede ( '-' = fehlt in der DB / '+' = extra in der DB ):"
-            # Führende Leerzeichen aus der Diff-Ausgabe entfernen
+            log "ERROR: Schema structure mismatch!"
+            log "Differences ( '-' = missing from DB / '+' = extra in DB ):"
+            # Remove leading whitespace from diff output
             echo "$schema_diff" | sed 's/^[[:space:]]*//'
-            log "Dies deutet auf eine inkompatible Schema-Version hin. Bitte migrieren Sie die Datenbank manuell."
+            log "This indicates an incompatible schema version. Please migrate the database manually."
             log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
             unset PGPASSWORD
             exit 1
         else
             log "Schema structure is in sync. Assuming schema is compatible."
         fi
-        # --- ENDE DER NEUEN LOGIK ---
+        # --- END OF NEW LOGIC ---
     fi
 
     unset PGPASSWORD
