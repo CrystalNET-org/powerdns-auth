@@ -70,7 +70,4 @@ RUN chmod +x /container/*.sh
 
 EXPOSE 10353/tcp 10353/udp
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD [ "/container/docker-readiness.sh" ]
-
 ENTRYPOINT ["/entrypoint.sh"]
