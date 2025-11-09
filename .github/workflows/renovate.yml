@@ -1,0 +1,26 @@
+# This workflow runs Renovate in a self-hosted manner
+# It's triggered on a schedule and can also be run manually.
+name: Run Renovate
+
+on:
+  schedule:
+    # Runs "at minute 0 past every hour" (e.g., 1:00, 2:00, 3:00)
+    # You can change this, e.g., '0 9 * * 1-5' for 9 AM UTC on weekdays
+    - cron: '0 * * * *'
+  workflow_dispatch: {} # Allows manual triggering from the Actions tab
+
+jobs:
+  renovate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # To create/update branches
+      pull-requests: write  # To create/update PRs
+
+    steps:
+      - name: Run Renovate
+        # Use the official Renovate GitHub Action
+        # This will find your renovate.json file automatically
+        uses: renovatebot/github-action@latest
+        with:
+          # The GITHUB_TOKEN has the required permissions (set above)
+          token: ${{ secrets.GITHUB_TOKEN }}
