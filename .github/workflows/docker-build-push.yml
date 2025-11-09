@@ -1,14 +1,3 @@
-Yes, I can integrate that advanced pattern into your workflow.
-
-This new structure is much more efficient. It replaces QEMU emulation with parallel, native builds and then merges them in a final "manifest" job.
-
-Here is your complete workflow file, updated with the new matrix-based, native-build strategy.
-
-Updated Workflow File
-I've replaced your single build-and-push job with the two new jobs: build (which runs in parallel for each architecture) and merge (which creates the final multi-arch image).
-
-YAML
-
 # This workflow builds and pushes a multi-arch Docker image to GHCR
 # It builds amd64 and arm64 natively in parallel, then merges them.
 name: Build and Push Docker Image
