@@ -29,4 +29,3 @@ jobs:
           # This ensures Renovate has correct permissions and
           # its PRs will trigger your other CI workflows.
           token: ${{ secrets.RENOVATE_TOKEN }}
-          configurationFile: renovate.json
