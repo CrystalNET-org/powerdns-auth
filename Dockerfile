@@ -48,6 +48,7 @@ RUN echo "http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/reposit
         libpq \
         libstdc++ \
         mariadb-connector-c \
+        boost1.84-program_options \
         lua-dev \
         libsodium \
         libcurl \
