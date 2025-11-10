@@ -31,7 +31,7 @@ jobs:
 
       - name: Run Renovate
         # Use the official Renovate GitHub Action
-        uses: renovatebot/github-action@v44.0.1
+        uses: renovatebot/github-action@v44.0.2
         with:
           # <-- CHANGED: Use a Classic PAT, not GITHUB_TOKEN
           # This ensures Renovate has correct permissions and
