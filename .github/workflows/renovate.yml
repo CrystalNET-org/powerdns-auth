@@ -27,7 +27,7 @@ jobs:
       # This is required so Renovate can find your renovate.json
       # and other repository files. This fixes "No repositories found".
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Run Renovate
         # Use the official Renovate GitHub Action
