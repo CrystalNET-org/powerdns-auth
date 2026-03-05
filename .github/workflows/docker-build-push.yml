@@ -145,7 +145,7 @@ jobs:
         # This is your original metadata step, moved here
         # to tag the *final* manifest.
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           # Use .toLower() here as well
           images: ghcr.io/${{ env.LOWERCASE_REPO }}
