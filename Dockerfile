@@ -1,7 +1,7 @@
 FROM harbor.crystalnet.org/dockerhub-proxy/alpine:3.22 AS builder
 
 # renovate: datasource=github-tags depName=PowerDNS/pdns extractVersion=^auth-(?<version>.*)$ versioning=semver
-ENV POWERDNS_VERSION=5.0.1
+ENV POWERDNS_VERSION=5.0.4
 
 RUN apk --update --no-cache add \
     bash \
